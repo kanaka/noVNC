@@ -134,6 +134,7 @@ export default class RFB extends EventTargetMixin {
         this._flushing = false;         // Display flushing state
         this._keyboard = null;          // Keyboard input handler object
         this._gestures = null;          // Gesture input handler object
+        this._resizeObserver = null;    // Resize observer object
 
         // Timers
         this._disconnTimer = null;      // disconnection timer
@@ -171,7 +172,7 @@ export default class RFB extends EventTargetMixin {
         // Bound event handlers
         this._eventHandlers = {
             focusCanvas: this._focusCanvas.bind(this),
-            windowResize: this._windowResize.bind(this),
+            handleResize: this._handleResize.bind(this),
             handleMouse: this._handleMouse.bind(this),
             handleWheel: this._handleWheel.bind(this),
             handleGesture: this._handleGesture.bind(this),
@@ -284,6 +285,8 @@ export default class RFB extends EventTargetMixin {
             this._rawChannel = null;
         });
         this._sock.on('error', e => Log.Warn("WebSocket on-error event"));
+
+        this._resizeObserver = new ResizeObserver(this._eventHandlers.handleResize);
 
         // Slight delay of the actual connection so that the caller has
         // time to set up callbacks.
@@ -545,9 +548,8 @@ export default class RFB extends EventTargetMixin {
         this._cursor.attach(this._canvas);
         this._refreshCursor();
 
-        // Monitor size changes of the screen
-        // FIXME: Use ResizeObserver, or hidden overflow
-        window.addEventListener('resize', this._eventHandlers.windowResize);
+        // Monitor size changes of the screen element
+        this._resizeObserver.observe(this._screen);
 
         // Always grab focus on some kind of click event
         this._canvas.addEventListener("mousedown", this._eventHandlers.focusCanvas);
@@ -588,7 +590,7 @@ export default class RFB extends EventTargetMixin {
         this._canvas.removeEventListener('contextmenu', this._eventHandlers.handleMouse);
         this._canvas.removeEventListener("mousedown", this._eventHandlers.focusCanvas);
         this._canvas.removeEventListener("touchstart", this._eventHandlers.focusCanvas);
-        window.removeEventListener('resize', this._eventHandlers.windowResize);
+        this._resizeObserver.disconnect();
         this._keyboard.ungrab();
         this._gestures.detach();
         this._sock.close();
@@ -622,7 +624,7 @@ export default class RFB extends EventTargetMixin {
             { detail: { name: this._fbName } }));
     }
 
-    _windowResize(event) {
+    _handleResize() {
         // If the window resized then our screen element might have
         // as well. Update the viewport dimensions.
         window.requestAnimationFrame(() => {
