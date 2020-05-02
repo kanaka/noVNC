@@ -23,6 +23,7 @@ import DES from "./des.js";
 import KeyTable from "./input/keysym.js";
 import XtScancode from "./input/xtscancodes.js";
 import { encodings } from "./encodings.js";
+import { RA2State } from "./ra2.js";
 import "./util/polyfill.js";
 
 import RawDecoder from "./decoders/raw.js";
@@ -79,6 +80,7 @@ export default class RFB extends EventTargetMixin {
         this._rfb_init_state = '';
         this._rfb_auth_scheme = -1;
         this._rfb_clean_disconnect = true;
+        this._rfb_ra2_state = new RA2State();
 
         // Server capabilities
         this._rfb_version = 0;
@@ -472,6 +474,14 @@ export default class RFB extends EventTargetMixin {
             }
 
             RFB.messages.clientCutText(this._sock, data);
+        }
+    }
+
+    setRSAKey(key) {
+        if (this._rfb_ra2_state.set_client_rsa_key(key)) {
+            this.dispatchEvent(new CustomEvent(
+                "rsakeyset",
+                { detail: { key: this._rfb_ra2_state.get_client_rsa_key() } }));
         }
     }
 
@@ -967,6 +977,8 @@ export default class RFB extends EventTargetMixin {
                 this._rfb_auth_scheme = 2; // VNC Auth
             } else if (includes(19, types)) {
                 this._rfb_auth_scheme = 19; // VeNCrypt Auth
+            } else if (includes(6, types)) {
+                this._rfb_auth_scheme = 6; // RA2ne
             } else {
                 return this._fail("Unsupported security types (types: " + types + ")");
             }
@@ -1271,6 +1283,127 @@ export default class RFB extends EventTargetMixin {
         return this._fail("No supported sub-auth types!");
     }
 
+    _negotiate_ra2ne_auth() {
+        if (this._rfb_ra2_state.state === 0) {
+            // Send client RSA public key
+            if (!this._rfb_ra2_state.has_set_client_rsa_key()) {
+                this.dispatchEvent(new CustomEvent(
+                    "rsakeyget",
+                    { detail: {} }));
+                return false;
+            }
+            this._sock.send(this._rfb_ra2_state.client_public_key);
+            this._rfb_ra2_state.state = 1;
+            return false;
+        } else if (this._rfb_ra2_state.state === 1) {
+            // Receive server RSA public key
+            // Send RSA encrypted client random
+            if (this._sock.rQwait("ra2 public key", 516, 0)) {
+                return false;
+            }
+            if (!this._rfb_ra2_state.parse_server_rsa_key(this._sock.rQshiftBytes(516))) {
+                return this._fail("Invalid RSA key");
+            }
+            this._sock.send(this._rfb_ra2_state.client_random_encrypted);
+            this._rfb_ra2_state.state = 2;
+            return false;
+        } else if (this._rfb_ra2_state.state === 2) {
+            // Receive RSA encrypted server random
+            // Derive client and server session key
+            // Set Cipher and send the client SHA1 (of the two public key's concatenation)
+            if (this._sock.rQwait("ra2 random", 258, 0)) {
+                return false;
+            }
+            if (!this._rfb_ra2_state.parse_server_random(this._sock.rQshiftBytes(258))) {
+                return this._fail("Invalid server random");
+            }
+            this._rfb_ra2_state.set_cipher();
+            this._sock.send(this._rfb_ra2_state.make_message(this._rfb_ra2_state.client_sha1));
+            this._rfb_ra2_state.state = 3;
+            return false;
+        } else if (this._rfb_ra2_state.state === 3) {
+            // Receive server SHA1
+            // Receive RA2 auth type (password only / username and password)
+            if (this._sock.rQwait("ra2 sha1 and type", 57, 0)) {
+                return false;
+            }
+            const server_sha1 = this._rfb_ra2_state.decrypt(
+                this._sock.rQshiftBytes(38).subarray(2)
+            );
+            const server_sha1_real = this._rfb_ra2_state.server_sha1;
+            if (server_sha1 === undefined) {
+                return this._fail("Invalid server hash");
+            }
+            for (let i = 0; i < 16; i++) {
+                if (server_sha1[i] != server_sha1_real[i]) {
+                    return this._fail("Invalid server hash");
+                }
+            }
+            let auth_type = this._rfb_ra2_state.decrypt(
+                this._sock.rQshiftBytes(19).subarray(2)
+            );
+            if (auth_type !== undefined) {
+                auth_type = auth_type[0];
+            }
+            this._rfb_ra2_state.state = 4;
+            this._rfb_ra2_state.auth_type = auth_type;
+            if (auth_type === 1) {
+                // username and password
+                if (this._rfb_credentials.username === undefined ||
+                    this._rfb_credentials.password === undefined) {
+                    this.dispatchEvent(new CustomEvent(
+                        "credentialsrequired",
+                        { detail: { types: ["username", "password"] } }));
+                    return false;
+                }
+            } else if (auth_type === 2) {
+                // password
+                if (this._rfb_credentials.password === undefined) {
+                    this.dispatchEvent(new CustomEvent(
+                        "credentialsrequired",
+                        { detail: { types: ["password"] } }));
+                    return false;
+                }
+            } else {
+                return this._fail("Unknown RA2 auth type");
+            }
+        } else if (this._rfb_ra2_state.state === 4) {
+            // Send credentials
+            let enc = null;
+            if (typeof TextEncoder === "undefined") {
+                enc = new Object();
+                enc.encode = (s_utf8) => {
+                    const s = unescape(encodeURIComponent(s_utf8));
+                    let arr = new Uint8Array(s.length);
+                    for (let i = 0; i < s.length; i++) {
+                        arr[i] = s.charCodeAt(i);
+                    }
+                    return arr;
+                };
+            } else {
+                enc = new TextEncoder();
+            }
+            let msg = null;
+            if (this._rfb_ra2_state.auth_type == 1) {
+                const username_enc = enc.encode(this._rfb_credentials.username);
+                const password_enc = enc.encode(this._rfb_credentials.password);
+                msg = new Uint8Array(username_enc.length + password_enc.length + 2);
+                msg[0] = username_enc.length;
+                msg.set(username_enc, 1);
+                msg[username_enc.length + 1] = password_enc.length;
+                msg.set(password_enc, username_enc.length + 2);
+            } else if (this._rfb_ra2_state.auth_type == 2) {
+                const password_enc = enc.encode(this._rfb_credentials.password);
+                msg = new Uint8Array(password_enc.length + 2);
+                msg[1] = this._rfb_credentials.password.length;
+                msg.set(password_enc, 2);
+            }
+            this._sock.send(this._rfb_ra2_state.make_message(msg));
+            this._rfb_init_state = 'SecurityResult';
+            return true;
+        }
+    }
+
     _negotiate_authentication() {
         switch (this._rfb_auth_scheme) {
             case 1:  // no auth
@@ -1295,6 +1428,9 @@ export default class RFB extends EventTargetMixin {
 
             case 129:  // TightVNC UNIX Security Type
                 return this._negotiate_tight_unix_auth();
+
+            case 6:  // RA2ne Security Type
+                return this._negotiate_ra2ne_auth();
 
             default:
                 return this._fail("Unsupported auth scheme (scheme: " +

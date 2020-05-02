@@ -1043,6 +1043,8 @@ const UI = {
         UI.rfb.addEventListener("clipboard", UI.clipboardReceive);
         UI.rfb.addEventListener("bell", UI.bell);
         UI.rfb.addEventListener("desktopname", UI.updateDesktopName);
+        UI.rfb.addEventListener("rsakeyget", UI.getRSAKey);
+        UI.rfb.addEventListener("rsakeyset", UI.setRSAKey);
         UI.rfb.clipViewport = UI.getSetting('view_clip');
         UI.rfb.scaleViewport = UI.getSetting('resize') === 'scale';
         UI.rfb.resizeSession = UI.getSetting('resize') === 'remote';
@@ -1717,6 +1719,15 @@ const UI = {
         optn.value = value;
         selectbox.options.add(optn);
     },
+
+    getRSAKey(e) {
+        const key = WebUtil.readSetting("rsa_key");
+        UI.rfb.setRSAKey(key);
+    },
+
+    setRSAKey(e) {
+        WebUtil.writeSetting("rsa_key", e.detail.key);
+    }
 
 /* ------^-------
  *    /MISC
