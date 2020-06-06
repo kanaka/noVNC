@@ -13,6 +13,7 @@ import { encodeUTF8, decodeUTF8 } from './util/strings.js';
 import { dragThreshold } from './util/browser.js';
 import EventTargetMixin from './util/eventtarget.js';
 import Display from "./display.js";
+import Clipboard from "./clipboard.js";
 import Inflator from "./inflator.js";
 import Deflator from "./deflator.js";
 import Keyboard from "./input/keyboard.js";
@@ -116,6 +117,7 @@ export default class RFB extends EventTargetMixin {
         this._sock = null;              // Websock object
         this._display = null;           // Display object
         this._flushing = false;         // Display flushing state
+        this._clipboard = null;         // Clipboard object
         this._keyboard = null;          // Keyboard input handler object
         this._mouse = null;             // Mouse input handler object
 
@@ -202,6 +204,9 @@ export default class RFB extends EventTargetMixin {
             throw exc;
         }
         this._display.onflush = this._onFlush.bind(this);
+
+        this._clipboard = new Clipboard(this._canvas);
+        this._clipboard.onpaste = this.clipboardPasteFrom.bind(this);
 
         this._keyboard = new Keyboard(this._canvas);
         this._keyboard.onkeyevent = this._handleKeyEvent.bind(this);
@@ -297,9 +302,11 @@ export default class RFB extends EventTargetMixin {
             if (viewOnly) {
                 this._keyboard.ungrab();
                 this._mouse.ungrab();
+                this._clipboard.ungrab();
             } else {
                 this._keyboard.grab();
                 this._mouse.grab();
+                this._clipboard.grab();
             }
         }
     }
@@ -1432,8 +1439,11 @@ export default class RFB extends EventTargetMixin {
         this._setDesktopName(name);
         this._resize(width, height);
 
-        if (!this._viewOnly) { this._keyboard.grab(); }
-        if (!this._viewOnly) { this._mouse.grab(); }
+        if (!this._viewOnly) {
+            this._keyboard.grab();
+            this._mouse.grab();
+            this._clipboard.grab();
+        }
 
         this._fbDepth = 24;
 
@@ -1550,9 +1560,18 @@ export default class RFB extends EventTargetMixin {
                 return true;
             }
 
-            this.dispatchEvent(new CustomEvent(
-                "clipboard",
-                { detail: { text: text } }));
+            this.dispatchEvent(new CustomEvent("clipboard", { detail: { text: text } }));
+
+            if (Clipboard.isSupported) {
+                const clipboardData = new DataTransfer();
+                clipboardData.setData("text/plain", text);
+                const clipboardEvent = new ClipboardEvent('copy', { clipboardData });
+                // Force initialization since the constructor is broken in Firefox
+                if (!clipboardEvent.clipboardData.items.length) {
+                    clipboardEvent.clipboardData.items.add(text, "text/plain");
+                }
+                this._canvas.dispatchEvent(clipboardEvent);
+            }
 
         } else {
             //Extended msg.
