@@ -19,6 +19,8 @@ import * as WebUtil from "./webutil.js";
 
 const PAGE_TITLE = "noVNC";
 
+const LINGUAS = ["cs", "de", "el", "es", "ja", "ko", "nl", "pl", "ru", "sv", "tr", "zh_CN", "zh_TW"];
+
 const UI = {
 
     connected: false,
@@ -41,16 +43,36 @@ const UI = {
     reconnectCallback: null,
     reconnectPassword: null,
 
-    prime() {
-        return WebUtil.initSettings().then(() => {
-            if (document.readyState === "interactive" || document.readyState === "complete") {
-                return UI.start();
-            }
+    run() {
+        let promise;
 
-            return new Promise((resolve, reject) => {
-                document.addEventListener('DOMContentLoaded', () => UI.start().then(resolve).catch(reject));
-            });
-        });
+        // Set up translations
+        l10n.setup(LINGUAS);
+        if (l10n.language === "en" || l10n.dictionary !== undefined) {
+            promise = Promise.resolve();
+        } else {
+            promise = WebUtil.fetchJSON('app/locale/' + l10n.language + '.json')
+                .then((translations) => { l10n.dictionary = translations; })
+                .catch(err => Log.Error("Failed to load translations: " + err));
+        }
+
+        promise
+            // Initialize setting storage
+            .then(WebUtil.initSettings)
+            // Wait for the page to load
+            .then(() => {
+                if (document.readyState === "interactive" || document.readyState === "complete") {
+                    return;
+                }
+
+                return new Promise((resolve, reject) => {
+                    document.addEventListener('DOMContentLoaded', () => UI.start().then(resolve).catch(reject));
+                });
+            })
+            // Finally start the UI
+            .then(UI.start);
+
+        return promise;
     },
 
     // Render default UI and initialize settings menu
@@ -1700,16 +1722,6 @@ const UI = {
  */
 };
 
-// Set up translations
-const LINGUAS = ["cs", "de", "el", "es", "ja", "ko", "nl", "pl", "ru", "sv", "tr", "zh_CN", "zh_TW"];
-l10n.setup(LINGUAS);
-if (l10n.language === "en" || l10n.dictionary !== undefined) {
-    UI.prime();
-} else {
-    WebUtil.fetchJSON('app/locale/' + l10n.language + '.json')
-        .then((translations) => { l10n.dictionary = translations; })
-        .catch(err => Log.Error("Failed to load translations: " + err))
-        .then(UI.prime);
-}
+UI.run();
 
 export default UI;
