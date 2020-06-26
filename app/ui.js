@@ -23,6 +23,8 @@ const LINGUAS = ["cs", "de", "el", "es", "ja", "ko", "nl", "pl", "ru", "sv", "tr
 
 const UI = {
 
+    userSettings: {},
+
     connected: false,
     desktopName: "",
 
@@ -43,7 +45,15 @@ const UI = {
     reconnectCallback: null,
     reconnectPassword: null,
 
-    run() {
+    run(options={}) {
+        UI.userSettings = options.settings || {};
+        if (UI.userSettings.defaults === undefined) {
+            UI.userSettings.defaults = {};
+        }
+        if (UI.userSettings.forced === undefined) {
+            UI.userSettings.forced = {};
+        }
+
         let promise;
 
         // Set up translations
@@ -177,6 +187,8 @@ const UI = {
             }
         }
 
+        UI.setupSettingLabels();
+
         /* Populate the controls if defaults are provided in the URL */
         UI.initSetting('host', window.location.hostname);
         UI.initSetting('port', port);
@@ -195,8 +207,6 @@ const UI = {
         UI.initSetting('repeaterID', '');
         UI.initSetting('reconnect', false);
         UI.initSetting('reconnect_delay', 5000);
-
-        UI.setupSettingLabels();
     },
     // Adds a link to the label elements on the corresponding input elements
     setupSettingLabels() {
@@ -744,6 +754,10 @@ const UI = {
 
     // Initial page load read/initialization of settings
     initSetting(name, defVal) {
+        // Has the user overridden the default value?
+        if (name in UI.userSettings.defaults) {
+            defVal = UI.userSettings.defaults[name];
+        }
         // Check Query string followed by cookie
         let val = WebUtil.getConfigVar(name);
         if (val === null) {
@@ -751,6 +765,11 @@ const UI = {
         }
         WebUtil.setSetting(name, val);
         UI.updateSetting(name);
+        // Has the user forced a value?
+        if (name in UI.userSettings.forced) {
+            val = UI.userSettings.forced[name];
+            UI.forceSetting(name, val);
+        }
         return val;
     },
 
@@ -828,17 +847,21 @@ const UI = {
     // disable the labels that belong to disabled input elements.
     disableSetting(name) {
         const ctrl = document.getElementById('noVNC_setting_' + name);
-        ctrl.disabled = true;
-        if (ctrl.label !== undefined) {
-            ctrl.label.classList.add('noVNC_disabled');
+        if (ctrl !== null) {
+            ctrl.disabled = true;
+            if (ctrl.label !== undefined) {
+                ctrl.label.classList.add('noVNC_disabled');
+            }
         }
     },
 
     enableSetting(name) {
         const ctrl = document.getElementById('noVNC_setting_' + name);
-        ctrl.disabled = false;
-        if (ctrl.label !== undefined) {
-            ctrl.label.classList.remove('noVNC_disabled');
+        if (ctrl !== null) {
+            ctrl.disabled = false;
+            if (ctrl.label !== undefined) {
+                ctrl.label.classList.remove('noVNC_disabled');
+            }
         }
     },
 
@@ -1725,7 +1748,5 @@ const UI = {
  * ==============
  */
 };
-
-UI.run();
 
 export default UI;
