@@ -63,7 +63,24 @@
     <!-- ES2015/ES6 modules polyfill -->
     <script nomodule src="vendor/browser-es-module-loader/dist/browser-es-module-loader.js"></script>
     <!-- actual script modules -->
-    <script type="module" crossorigin="anonymous" src="app/ui.js"></script>
+    <script type="module">
+        import UI from "./app/ui.js";
+
+        let defaults = {};
+        let forced = {};
+
+        // Override any defaults you need here:
+        //
+        // defaults['host'] = 'vnc.example.com';
+
+        // Or force a specific setting, preventing the user from
+        // changing it:
+        //
+        // forced['view_only'] = true;
+
+        UI.run({ settings: { defaults: defaults,
+                             forced: forced } });
+    </script>
     <!-- end scripts -->
 </head>
 
