@@ -2530,6 +2530,27 @@ describe('Remote Frame Buffer Protocol Client', function () {
                 client._canvas.dispatchEvent(ev);
             }
 
+            function supportsSendMouseMovementEvent() {
+                // Some browsers (like Safari) support the movementX /
+                // movementY properties of MouseEvent, but do not allow creation
+                // of non-trusted events with those properties.
+                let ev;
+
+                ev = new MouseEvent('mousemove',
+                                    { 'movementX': 100,
+                                      'movementY': 100 });
+                return ev.movementX === 100 && ev.movementY === 100;
+            }
+
+            function sendMouseMovementEvent(dx, dy) {
+                let ev;
+
+                ev = new MouseEvent('mousemove',
+                                    { 'movementX': dx,
+                                      'movementY': dy });
+                client._canvas.dispatchEvent(ev);
+            }
+
             function sendMouseButtonEvent(x, y, down, button) {
                 let pos = elementToClient(x, y);
                 let ev;
@@ -2641,6 +2662,62 @@ describe('Remote Frame Buffer Protocol Client', function () {
 
                 expect(pointerEvent).to.have.been.calledOnceWith(client._sock,
                                                                  50, 70, 0x0);
+            });
+
+            it('should ignore remote cursor position updates', function () {
+                if (!supportsSendMouseMovementEvent()) {
+                    this.skip();
+                    return;
+                }
+                // Simple VMware Cursor Position FBU message with pointer coordinates
+                // (50, 50).
+                const incoming = [ 0x00, 0x00, 0x00, 0x01, 0x00, 0x32, 0x00, 0x32,
+                                   0x00, 0x00, 0x00, 0x00, 0x57, 0x4d, 0x56, 0x66 ];
+                client._resize(100, 100);
+
+                const cursorSpy = sinon.spy(client, '_handleVMwareCursorPosition');
+                client._sock._websocket._receiveData(new Uint8Array(incoming));
+                expect(cursorSpy).to.have.been.calledOnceWith();
+                cursorSpy.restore();
+
+                expect(client._mousePos).to.deep.equal({ });
+                sendMouseMoveEvent(10, 10);
+                clock.tick(100);
+                expect(pointerEvent).to.have.been.calledOnceWith(client._sock,
+                                                                 10, 10, 0x0);
+            });
+
+            it('should handle remote mouse position updates in pointer lock mode', function () {
+                if (!supportsSendMouseMovementEvent()) {
+                    this.skip();
+                    return;
+                }
+                // Simple VMware Cursor Position FBU message with pointer coordinates
+                // (50, 50).
+                const incoming = [ 0x00, 0x00, 0x00, 0x01, 0x00, 0x32, 0x00, 0x32,
+                                   0x00, 0x00, 0x00, 0x00, 0x57, 0x4d, 0x56, 0x66 ];
+                client._resize(100, 100);
+
+                const spy = sinon.spy();
+                client.addEventListener("inputlock", spy);
+                let stub = sinon.stub(document, 'pointerLockElement');
+                stub.get(function () { return client._canvas; });
+                client._handlePointerLockChange();
+                stub.restore();
+                client._sock._websocket._receiveData(new Uint8Array([0x02, 0x02]));
+                expect(spy).to.have.been.calledOnce;
+                expect(spy.args[0][0].detail.pointer).to.be.true;
+
+                const cursorSpy = sinon.spy(client, '_handleVMwareCursorPosition');
+                client._sock._websocket._receiveData(new Uint8Array(incoming));
+                expect(cursorSpy).to.have.been.calledOnceWith();
+                cursorSpy.restore();
+
+                expect(client._mousePos).to.deep.equal({ x: 50, y: 50 });
+                sendMouseMovementEvent(10, 10);
+                clock.tick(100);
+                expect(pointerEvent).to.have.been.calledOnceWith(client._sock,
+                                                                 60, 60, 0x0);
             });
 
             describe('Event Aggregation', function () {

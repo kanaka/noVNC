@@ -113,6 +113,10 @@ protocol stream.
   - The `capabilities` event is fired when `RFB.capabilities` is
     updated.
 
+[`inputlock`](#inputlock)
+  - The `inputlock` event is fired when an input lock is acquired (or released)
+    by the canvas.
+
 ### Methods
 
 [`RFB.disconnect()`](#rfbdisconnect)
@@ -145,6 +149,9 @@ protocol stream.
 
 [`RFB.clipboardPasteFrom()`](#rfbclipboardPasteFrom)
   - Send clipboard contents to server.
+
+[`RFB.requestInputLock()`](#rfbrequestInputLock)
+  - Requests that the RFB canvas acquire an input lock.
 
 ### Details
 
@@ -261,6 +268,15 @@ which is a `DOMString` specifying the new name.
 The `capabilities` event is fired whenever an entry is added or removed
 from `RFB.capabilities`. The `detail` property is an `Object` with the
 property `capabilities` containing the new value of `RFB.capabilities`.
+
+#### inputlock
+
+The `inputlock` event is fired after a request to acquire an input lock or
+whenever the state of the canvas' input lock has changed, the latter typically
+occurs because the lock was released by the user pressing the ESC key or
+performing a browser-specific gesture.  The `detail` property is an `Object`
+with the property `pointer` containing whether the Pointer Lock is currently
+held or not.
 
 #### RFB.disconnect()
 
@@ -383,3 +399,24 @@ to the remote server.
 
 **`text`**
   - A `DOMString` specifying the clipboard data to send.
+
+#### RFB.requestInputLock()
+
+The `RFB.requestInputLock()` method is used to request that the RFB canvas hold
+an input lock. An `inputlock` event will be fired with the result of the
+acquisition of the requested locks.
+
+##### Syntax
+
+    RFB.requestInputLock( { pointer: true } );
+
+###### Parameters
+
+**`pointer`**
+  - Requests to acquire a [Pointer
+    Lock](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API),
+    which hides the local mouse cursor and provides relative motion events.
+    This must be called directly from an event handler where a user has
+    directly interacted with an element through an [engagement
+    gesture](https://w3c.github.io/pointerlock/#dfn-engagement-gesture) (e.g. a
+    click or touch event) for the browser to allow this.

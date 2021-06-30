@@ -28,6 +28,7 @@ export const encodings = {
     pseudoEncodingCompressLevel9: -247,
     pseudoEncodingCompressLevel0: -256,
     pseudoEncodingVMwareCursor: 0x574d5664,
+    pseudoEncodingVMwareCursorPosition: 0x574d5666,
     pseudoEncodingExtendedClipboard: 0xc0a1e5ce
 };
 

@@ -6,21 +6,20 @@
 
 import { supportsCursorURIs, isTouchDevice } from './browser.js';
 
-const useFallback = !supportsCursorURIs || isTouchDevice;
+const needsFallback = !supportsCursorURIs || isTouchDevice;
 
 export default class Cursor {
     constructor() {
         this._target = null;
 
         this._canvas = document.createElement('canvas');
+        this._canvas.style.position = 'fixed';
+        this._canvas.style.zIndex = '65535';
+        this._canvas.style.pointerEvents = 'none';
+        // Can't use "display" because of Firefox bug #1445997
+        this._canvas.style.visibility = 'hidden';
 
-        if (useFallback) {
-            this._canvas.style.position = 'fixed';
-            this._canvas.style.zIndex = '65535';
-            this._canvas.style.pointerEvents = 'none';
-            // Can't use "display" because of Firefox bug #1445997
-            this._canvas.style.visibility = 'hidden';
-        }
+        this._useFallback = needsFallback;
 
         this._position = { x: 0, y: 0 };
         this._hotSpot = { x: 0, y: 0 };
@@ -40,9 +39,14 @@ export default class Cursor {
 
         this._target = target;
 
-        if (useFallback) {
-            document.body.appendChild(this._canvas);
+        document.body.appendChild(this._canvas);
 
+        if (needsFallback) {
+            // Only add the event listeners if this will be responsible for
+            // rendering the cursor all the time. Otherwise, the cursor will
+            // only be rendered then the forced emulation is turned on, and
+            // that doesn't require this class to be adjusting the cursor
+            // position.
             const options = { capture: true, passive: true };
             this._target.addEventListener('mouseover', this._eventHandlers.mouseover, options);
             this._target.addEventListener('mouseleave', this._eventHandlers.mouseleave, options);
@@ -58,15 +62,15 @@ export default class Cursor {
             return;
         }
 
-        if (useFallback) {
+        if (needsFallback) {
             const options = { capture: true, passive: true };
             this._target.removeEventListener('mouseover', this._eventHandlers.mouseover, options);
             this._target.removeEventListener('mouseleave', this._eventHandlers.mouseleave, options);
             this._target.removeEventListener('mousemove', this._eventHandlers.mousemove, options);
             this._target.removeEventListener('mouseup', this._eventHandlers.mouseup, options);
-
-            document.body.removeChild(this._canvas);
         }
+
+        document.body.removeChild(this._canvas);
 
         this._target = null;
     }
@@ -91,9 +95,10 @@ export default class Cursor {
         ctx.clearRect(0, 0, w, h);
         ctx.putImageData(img, 0, 0);
 
-        if (useFallback) {
+        if (this._useFallback || needsFallback) {
             this._updatePosition();
-        } else {
+        }
+        if (!needsFallback) {
             let url = this._canvas.toDataURL();
             this._target.style.cursor = 'url(' + url + ')' + hotx + ' ' + hoty + ', default';
         }
@@ -112,7 +117,7 @@ export default class Cursor {
     // Mouse events might be emulated, this allows
     // moving the cursor in such cases
     move(clientX, clientY) {
-        if (!useFallback) {
+        if (!this._useFallback) {
             return;
         }
         // clientX/clientY are relative the _visual viewport_,
@@ -128,6 +133,22 @@ export default class Cursor {
         this._updatePosition();
         let target = document.elementFromPoint(clientX, clientY);
         this._updateVisibility(target);
+    }
+
+    // Force the use of cursor emulation. This is needed when the pointer lock
+    // is in use, since the browser will not render the cursor.
+    setEmulateCursor(emulate) {
+        if (needsFallback) {
+            // We need to use the fallback all the time, so we shouldn't update
+            // the fallback flag.
+            return;
+        }
+        this._useFallback = emulate;
+        if (this._useFallback) {
+            this._showCursor();
+        } else {
+            this._hideCursor();
+        }
     }
 
     _handleMouseOver(event) {
