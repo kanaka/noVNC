@@ -313,6 +313,16 @@ export default class RFB extends EventTargetMixin {
         }
     }
 
+    get useNativeDpi() { return this._nativeDpi; }
+    set useNativeDpi(nativeDpi) {
+        this._nativeDpi = nativeDpi;
+        this._updateScale();
+        this._updateClip();
+        if (this._resizeSession) {
+            this._requestRemoteResize();
+        }
+    }
+
     get showDotCursor() { return this._showDotCursor; }
     set showDotCursor(show) {
         this._showDotCursor = show;
@@ -662,7 +672,14 @@ export default class RFB extends EventTargetMixin {
 
     _updateScale() {
         if (!this._scaleViewport) {
-            this._display.scale = 1.0;
+            if (this._nativeDpi) {
+                const dpr = window.devicePixelRatio || 1;
+                const scaledWidth = Math.floor(window.innerWidth * dpr);
+                // Compute the exact scale factor to match the floored width/height
+                this._display.scale = window.innerWidth / scaledWidth;
+            } else {
+                this._display.scale = 1;
+            }
         } else {
             const size = this._screenSize();
             this._display.autoscale(size.w, size.h);
@@ -682,8 +699,10 @@ export default class RFB extends EventTargetMixin {
         }
 
         const size = this._screenSize();
+        size.w = Math.floor(size.w / this._display.scale);
+        size.h = Math.floor(size.h / this._display.scale);
         RFB.messages.setDesktopSize(this._sock,
-                                    Math.floor(size.w), Math.floor(size.h),
+                                    size.w, size.h,
                                     this._screenID, this._screenFlags);
 
         Log.Debug('Requested new desktop size: ' +
