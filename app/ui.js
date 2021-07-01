@@ -224,6 +224,9 @@ const UI = {
         document.getElementById("noVNC_view_drag_button")
             .addEventListener('click', UI.toggleViewDrag);
 
+        document.getElementById("noVNC_audio_button")
+            .addEventListener('click', UI.toggleEnableAudio);
+
         document.getElementById("noVNC_control_bar_handle")
             .addEventListener('mousedown', UI.controlbarHandleMouseDown);
         document.getElementById("noVNC_control_bar_handle")
@@ -438,7 +441,7 @@ const UI = {
             UI.enableSetting('port');
             UI.enableSetting('path');
             UI.enableSetting('repeaterID');
-            UI.updatePowerButton();
+            UI.updateCapabilities();
             UI.keepControlbar();
         }
 
@@ -869,6 +872,24 @@ const UI = {
         }
     },
 
+    updateCapabilities() {
+        UI.updatePowerButton();
+        UI.updateAudioButton();
+    },
+
+    updateAudioButton() {
+        if (UI.connected &&
+            UI.rfb.capabilities.audio) {
+            document.getElementById('noVNC_audio_button')
+                .classList.remove("noVNC_hidden");
+            document.getElementById('noVNC_audio_button')
+                .classList.remove("noVNC_selected");
+        } else {
+            document.getElementById('noVNC_audio_button')
+                .classList.add("noVNC_hidden");
+        }
+    },
+
 /* ------^-------
  *   /SETTINGS
  * ==============
@@ -1032,7 +1053,7 @@ const UI = {
         UI.rfb.addEventListener("disconnect", UI.disconnectFinished);
         UI.rfb.addEventListener("credentialsrequired", UI.credentials);
         UI.rfb.addEventListener("securityfailure", UI.securityFailed);
-        UI.rfb.addEventListener("capabilities", UI.updatePowerButton);
+        UI.rfb.addEventListener("capabilities", UI.updateCapabilities);
         UI.rfb.addEventListener("clipboard", UI.clipboardReceive);
         UI.rfb.addEventListener("bell", UI.bell);
         UI.rfb.addEventListener("desktopname", UI.updateDesktopName);
@@ -1644,6 +1665,27 @@ const UI = {
                 .classList.remove('noVNC_hidden');
             document.getElementById('noVNC_clipboard_button')
                 .classList.remove('noVNC_hidden');
+        }
+    },
+
+    toggleEnableAudio() {
+        if (!UI.rfb) return;
+
+        if (!document.getElementById('noVNC_audio_button')
+            .classList.contains("noVNC_selected")) {
+            UI.rfb.enableAudio(
+                2,
+                MediaSource.isTypeSupported('audio/webm;codecs=opus') ?
+                    RFB.audioCodecs.OpusWebM :
+                    RFB.audioCodecs.MP3,
+                32 * 1024  // 32kbps
+            );
+            document.getElementById('noVNC_audio_button')
+                .classList.add("noVNC_selected");
+        } else {
+            UI.rfb.disableAudio();
+            document.getElementById('noVNC_audio_button')
+                .classList.remove("noVNC_selected");
         }
     },
 

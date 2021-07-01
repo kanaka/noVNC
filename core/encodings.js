@@ -27,6 +27,7 @@ export const encodings = {
     pseudoEncodingContinuousUpdates: -313,
     pseudoEncodingCompressLevel9: -247,
     pseudoEncodingCompressLevel0: -256,
+    pseudoEncodingReplitAudio: 0x52706c41,
     pseudoEncodingVMwareCursor: 0x574d5664,
     pseudoEncodingExtendedClipboard: 0xc0a1e5ce
 };
