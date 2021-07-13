@@ -18,6 +18,8 @@ keysym values.
 * __Display__ (core/display.js): Efficient 2D rendering abstraction
 layered on the HTML5 canvas element.
 
+* __Clipboard__ (core/clipboard.js): Clipboard event handler.
+
 * __Websock__ (core/websock.js): Websock client from websockify
 with transparent binary data support.
 [Websock API](https://github.com/novnc/websockify-js/wiki/websock.js) wiki page.
@@ -25,7 +27,7 @@ with transparent binary data support.
 
 ## 1.2 Callbacks
 
-For the Mouse, Keyboard and Display objects the callback functions are
+For the Mouse, Keyboard, Display and Clipboard objects the callback functions are
 assigned to configuration attributes, just as for the RFB object. The
 WebSock module has a method named 'on' that takes two parameters: the
 callback event name, and the callback function.
@@ -87,3 +89,23 @@ None
 | name    | parameters | description
 | ------- | ---------- | ------------
 | onflush | ()         | A display flush has been requested and we are now ready to resume FBU processing
+
+
+## 2.4 Clipboard Module
+
+### 2.4.1 Configuration Attributes
+
+None
+
+### 2.4.2 Methods
+
+| name               | parameters        | description
+| ------------------ | ----------------- | ------------
+| grab               | ()                | Begin capturing clipboard events
+| ungrab             | ()                | Stop capturing clipboard events
+
+### 2.3.3 Callbacks
+
+| name    | parameters | description
+| ------- | ---------- | ------------
+| onpaste | (text)     | Called with the text content of the clipboard when the user paste something
